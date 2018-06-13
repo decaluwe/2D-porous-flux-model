@@ -22,52 +22,65 @@ Author:
 """ Load any needed modeules """
 "-----------------------------------------------------------------------------"
 import numpy as np
-from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 import cantera as ct
-# import cantera.DustyGas as DGM
 import matplotlib.pyplot as plt
 
 """ Set up inputs and givens """
 "-----------------------------------------------------------------------------"
 # Geometry and physical constants:
-L_pore = 5.0    # Diameter of pore in microns (or side length of square pore)
-spacing = 10.0  # Horizontal spacing (center to center) of pores in microns
-t_glass = 20.0  # Thickness of spin on glass layer in microns
-phi_g = 0.5     # Constant porosity of spin on glass
-Temp = 25       # Constant temperature [C]
-t_sim = 30.0    # Simulation time [s]
+L_pore = 5.0      # Diameter of pore in microns (or side length of square pore)
+spacing = 10.0    # Horizontal spacing (center to center) of pores in microns
+t_glass = 20.0    # Thickness of spin on glass layer in microns
+Temp = 25.0       # Constant gas temperature [C]
+Press = 101325.0  # Initial gas pressure [Pa]
+phi_g = 0.5       # Porosity of glass layer
+t_sim = 10.0      # Simulation time [s]
 
-# Call cantera for gas-phase:
-gas = ct.Solution('Air.cti')
-
-# Number of species to track:
-Nspecies = gas.n_species
+tau_g = phi_g**(-0.5)   # Tortuosity calculation via Bruggeman correlation
 
 # Boundary conditions:
-# Species in Air: ['O', 'O2', 'N', 'NO', 'NO2', 'N2O', 'N2', 'AR']
-# Constant mass density of each species at top inlet
-m_k_top = np.array([0.,1.,2.,3.,4.,5.,6.,7.])
-# Constant flux of each species at bottom outlet  
-J_k_bot = np.array([7.,6.,5.,4.,3.,2.,1.,0.])  
+# Species in Simple Air: [O2', 'N2', 'AR']
+# Constant concentrations of air will be supplied from ambient at inlet
+# Constant flux of each species O2 will be calculated based on current
+i_curr = 0.15     # [A/cm^2]  
 
 # Switch inputs:
-Diff_mod = 1    # Diffusion model: 1 - Fick's, 2 - Knudsen, 3 - Dusty Gas
-Geom = 1        # Lattice type: 1 - Square, 2 - Hexagonal
+Diff_Mod = 0      # Diffusion model: 0 - Fick's, 1 - Dusty Gas
+Geom = 1          # Lattice type: 1 - Square, 2 - Hexagonal
 
-# Discretization for 2D mesh and time:
+# Discretization for 2D mesh:
 Nx = 5
 Ny = 3
-Nt = 2
+
+# Call cantera for gas-phase:
+if Diff_Mod == 0:
+    gas = ct.Solution('simple_air.cti')
+elif Diff_Mod == 1:
+    gas = ct.DustyGas('simple_air.cti')
+    gas.porosity = phi_g
+    gas.tortuosity = tau_g
+    gas.mean_pore_radius = 1.5e-7 # length in [m]
+    gas.mean_particle_diameter = 1.5e-6 # length in [m]
+# 'simple_air.cti' was created from 'air.cti' by removing reactions and all 
+# species except O2, N2, and Ar.
+    
+# Species name for contour plots:
+# Species in Simple Air: ['O2', 'N2', 'AR']
+plt_species = 'O2'
 
 # Initialize solution vector:
+Nspecies = gas.n_species
 SV_0 = np.zeros(Nx*Ny*Nspecies)
 
-# Species name for contour plots
-# Species in Air: ['O', 'O2', 'N', 'NO', 'NO2', 'N2O', 'N2', 'AR']
-plt_species = 'O2'
+# Given constants:
+F = 96485333           # Faraday Constant [s-A/kmol]
+R = ct.gas_constant    # Universal gas constant [J/kmol-K]
 
 """ Pre-process variables/expressions """
 "-----------------------------------------------------------------------------"
+gas.TP = Temp+273.15, Press    # set gas state via temperature and pressure
+
 rad = 1e-6*L_pore/2.0   # length of top inlet [m]
 
 # Determine half of max solid distance between pores for domain [m]
@@ -82,92 +95,69 @@ BC_in = int(round(Nx*rad / (rad+max_space))) # x-nodes affected by inlet BC
 dX = (rad + max_space) / Nx
 dY = 1e-6*t_glass / Ny
 
-# Set up initial values at inlet
-for i in range(BC_in):
-    SV_0[i*Nspecies:(i+1)*Nspecies] = m_k_top
-    
-# Create vectors from m_k_top and J_k_bot for sub-functions
-m_k_vec = np.zeros(Nx*Nspecies)
-m_k_vec[0:BC_in*Nspecies] = np.tile(m_k_top, BC_in)
-J_k_vec = np.tile(J_k_bot, (Nx,1))
+# Set up initial values at each cell with ambient simple_air
+SV_0 = np.tile(gas.Y*gas.density_mass/phi_g,Nx*Ny)
+inlet_BC = np.tile(gas.Y*gas.density_mass/phi_g,BC_in)
+
+# Solve for O2 flux at outlet BC based on i_curr and Faraday
+iO2 = gas.species_index('O2')
+MW_O2 = gas.molecular_weights[iO2]
+J_O2_out = MW_O2 *i_curr *100**2 /F /4
+J_BC = np.zeros(Nx*Nspecies)
+J_BC[iO2::Nspecies] = J_O2_out
     
 """ Sub-functions for integrator """
 "-----------------------------------------------------------------------------"
-def J(Diff_mod,SV): # Diffusion model for flux calculations
-    if Diff_mod == 1:
-        # Fick's Diffusion model - negligible interactions with solid
-        D_AB = 1.
-        J = -D_AB*1.
-    elif Diff_mod == 2:
-        # Knudsen's Diffusion model - solid/gas interactions dominate
-        D_AB = 1.
-    elif Diff_mod == 3:
-        # Dusty Gas model - solid/gas interactions both contribute
-        D_AB = 1.
-    else:
-        print('Error: Diff_mod must be an integer between 1 and 3.')
-        
-    return J
+if Diff_Mod == 0:
+    from Ficks_func import Flux_Calc
+elif Diff_Mod == 1:
+    from DGM_func import Flux_Calc
+    
+def dSVdt_func(t,SV): # System of ODEs to solve
+    dSVdt = np.zeros(Nx*Ny*Nspecies)
+    Fluxes_X, Fluxes_Y = Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,inlet_BC,gas,phi_g,tau_g)
+    Fluxes_Y[Ny*Nx*Nspecies:] = J_BC # Constant flux out BC
+               
+    # Initialize the fluxes into the first row (y-direction)
+    Flux_Y_in = Fluxes_Y[0:Nx*Nspecies]
+            
+    # Vector math for inside domain all but last row of cells
+    for j in range(Ny):
+        ind1 = j*Nx*Nspecies # index for first cell in each row
+        ind2 = (j+1)*Nx*Nspecies # index for last cell in each row
 
-def dJdt_func(SV,t): # System of ODEs to solve
-    dJdt = np.zeros(Nx*Ny*Nspecies)
-    Fluxes_X = np.zeros([Ny,Nx-1,Nspecies])
-    Fluxes_Y = np.zeros([Ny+1,Nx,Nspecies])
-    Fluxes_Y[-1,:,:] = J_k_vec # Set constant flux out BC for each species
-       
-    # Initialize at BC (1st row)
-    ind1 = 0 # First cell of first row
-    ind2 = Nspecies # Second cell of first row
-    ind3 = (Nx-1)*Nspecies # Second-to-last cell of first row
-    ind4 = Nx*Nspecies # Last cell of first row
-    
-    dJdt[ind1:ind2] = (Fluxes_Y[0,0,:] - Fluxes_Y[1,0,:])/dY \
-                    - Fluxes_X[0,0,:]/dX
-    dJdt[ind2:ind3] = np.reshape((Fluxes_Y[0,1:-1,:] - Fluxes_Y[1,1:-1,:])/dY \
-                    + (Fluxes_X[0,0:-1,:] - Fluxes_X[0,1:,:])/dX, ind3-ind2)
-    dJdt[ind3:ind4] = 0.
-    
-    # Vector math for inside domain
-    for j in range(1,Ny+1):
-        ind1 = j*Nx*Nspecies # First cell of each row
-        ind2 = j*Nx*Nspecies + Nspecies # Second cell of each row
-        ind3 = (j+1)*Nx*Nspecies - Nspecies # Second-to-last cell of each row
-        ind4 = (j+1)*Nx*Nspecies # Last cell of each row
+        Flux_Y_out = Fluxes_Y[(j+1)*Nx*Nspecies:(j+2)*Nx*Nspecies]
         
-        dJdt[ind1:ind2] = 0.
-        dJdt[ind2:ind3] = 0.
-        dJdt[ind3:ind4] = 0.
+        Flux_X_in = Fluxes_X[j*(Nx+1)*Nspecies:(j+1)*(Nx+1)*Nspecies-Nspecies]
+        Flux_X_out = Fluxes_X[j*(Nx+1)*Nspecies+Nspecies:(j+1)*(Nx+1)*Nspecies]
         
-    # Last row BC differentials
-    ind1 = (Ny-1)*Nx*Nspecies # First cell of last row
-    ind2 = (Ny-1)*Nx*Nspecies + Nspecies # Second cell of last row
-    ind3 = Ny*Nx*Nspecies - Nspecies # Second-to-last cell of last row
-    ind4 = Ny*Nx*Nspecies # Last cell of last row
-    
-    dJdt[ind1:ind2] = -1.
-    dJdt[ind2:ind3] = -1.
-    dJdt[ind3:ind4] = -1.
-
-    return dJdt
+        dSVdt[ind1:ind2] = 1/phi_g*((Flux_Y_in + Flux_Y_out)/dY \
+                         + (Flux_X_in + Flux_X_out)/dX)
+        
+        # The fluxes leaving the current row are the inlets to the next row
+        Flux_Y_in = Flux_Y_out
+        
+    return dSVdt
 
 """ Call ODE integrator and process results """
 "-----------------------------------------------------------------------------"
-res = odeint(dJdt_func, SV_0, np.linspace(0, t_sim, Nt)) # Use ODE solver
+sol = solve_ivp(dSVdt_func, (0, t_sim), SV_0) # Use ODE solver
 
-plt_species_ind = gas.species_index(plt_species) # Extract index for species
+plt_species_ind = gas.species_index(plt_species) # Extract index for plot
 
 # Define variable vectors to be plotted
 x_plt = np.linspace(0, rad+max_space, Nx) / 1e-6
 y_plt = -1*np.linspace(0, t_glass, Ny)
-SV_plt = np.reshape(res[-1,plt_species_ind::Nspecies], (Ny,Nx))
+SV = sol.y.T
+sol_t = sol.t
+SV_plt = np.reshape(SV[-1,plt_species_ind::Nspecies], (Ny,Nx))
 
 # Create contour plot
 plt.contourf(x_plt,y_plt,SV_plt)
-plt.colorbar()
-plt.title('2D %s Plot' %plt_species)
+plt.title('%s Density [kg/m^3 gas]' %plt_species)
 plt.xlabel('Horizontal distance, x [micron]')
 plt.ylabel('Glass thickness, y [micron]')
-
+plt.colorbar()
 
 
 
@@ -192,8 +182,6 @@ plt.ylabel('Glass thickness, y [micron]')
 "-----------------------------------------------------------------------------"
 # Integrate calls for diffusion coefficients and properly incorporate into the
 # ODE function. 
-
-# Apply appropriate values for inlet and outlet boundary conditions.
 
 # Determine appropriate discretization in time and space and apply for a time
 # that allows for a steady-state solution to be reached.
