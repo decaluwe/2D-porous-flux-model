@@ -29,15 +29,16 @@ def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
     for j in range(Ny):
         ind1 = j*Nx*Nspecies # First -> last index of cell on left
         ind2 = ind1 + Nspecies
-        for i in range(1,Nx):
+        for i in range(Nx-1):
             ind3 = ind2 # First -> last index of cell on right
             ind4 = ind3 + Nspecies
             
-            Y1 = SV[ind1:ind2] / sum(SV[ind1:ind2])
             D1 = sum(SV[ind1:ind2])
-            Y2 = SV[ind3:ind4] / sum(SV[ind3:ind4])
             D2 = sum(SV[ind3:ind4])
-
+            
+            Y1 = SV[ind1:ind2] / D1
+            Y2 = SV[ind3:ind4] / D2
+            
             molar_fluxes = gas.molar_fluxes(T,T,D1,D2,Y1,Y2,dX)
             Fluxes_X_int[cnt_x:cnt_x+Nspecies] = molar_fluxes*MWs
             
@@ -52,12 +53,13 @@ def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
     
     # Calculate each y-direction flux:
     for i in range(BC_in):
-        Y1 = inlet_BC / sum(inlet_BC)
-        D1 = sum(inlet_BC)
-        Y2 = SV[i*Nspecies:(i+1)*Nspecies]\
-           / sum(SV[i*Nspecies:(i+1)*Nspecies])
-        D2 = sum(SV[i*Nspecies:(i+1)*Nspecies])
         
+        D1 = sum(inlet_BC)
+        D2 = sum(SV[i*Nspecies:(i+1)*Nspecies])
+    
+        Y1 = inlet_BC / D1     
+        Y2 = SV[i*Nspecies:(i+1)*Nspecies] / D2
+                
         molar_fluxes = gas.molar_fluxes(T,T,D1,D2,Y1,Y2,dY)
         Fluxes_Y[i*Nspecies:(i+1)*Nspecies] = molar_fluxes*MWs
     
@@ -65,12 +67,13 @@ def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
         ind1 = j*Nx*Nspecies # First -> last index of cell on top
         ind2 = ind1 + Nspecies
         for i in range(Nx):
-            Y1 = SV[ind1:ind2] / sum(SV[ind1:ind2])
+            
             D1 = sum(SV[ind1:ind2])
-            Y2 = SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies]\
-               / sum(SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies])
             D2 = sum(SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies])
             
+            Y1 = SV[ind1:ind2] / D1
+            Y2 = SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies] / D2
+                     
             molar_fluxes = gas.molar_fluxes(T,T,D1,D2,Y1,Y2,dY)
             Fluxes_Y[cnt_y:cnt_y+Nspecies] = molar_fluxes*MWs
             
