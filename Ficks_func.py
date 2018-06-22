@@ -10,7 +10,7 @@ Description:
 def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
     
     import numpy as np
-        
+            
     Fluxes_X = np.zeros((Nx+1)*Ny*Nspecies) # Fluxes in x-direction w/ 0's BC
     Fluxes_X_int = np.zeros((Nx-1)*Ny*Nspecies) # Interior x-direction fluxes
     Fluxes_Y = np.zeros(Nx*(Ny+1)*Nspecies) # Fluxes in y-direction
@@ -36,20 +36,23 @@ def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
             ind3 = ind2 # First -> last index of cell on right
             ind4 = ind3 + Nspecies
             
-            Y1 = SV[ind1:ind2] / sum(SV[ind1:ind2])
-            Y2 = SV[ind3:ind4] / sum(SV[ind3:ind4])
+            D1 = sum(SV[ind1:ind2])
+            D2 = sum(SV[ind3:ind4])
+            
+            Y1 = SV[ind1:ind2] / D1
+            Y2 = SV[ind3:ind4] / D2
             
             # Terms for diffusive flux:
-            gas.TDY = Temp, sum(np.mean([Y1,Y2],axis=0)), np.mean([Y1,Y2],axis=0)
+            gas.TDY = Temp, np.mean([D1,D2]), np.mean([Y1,Y2],axis=0)
             D_AB = gas.mix_diff_coeffs_mass
             mu = gas.viscosity
             Delta_Y = Y2 - Y1 
             
             # Terms for convective flux:
             rho_k = np.mean([SV[ind1:ind2],SV[ind3:ind4]],axis=0)
-            gas.TDY = Temp, sum(Y1), Y1
+            gas.TDY = Temp, D1, Y1
             P1 = gas.P
-            gas.TDY = Temp, sum(Y2), Y2
+            gas.TDY = Temp, D2, Y2
             P2 = gas.P
             V_conv = -K_g*(P2 - P1)*dX_inv / mu
                                  
@@ -68,21 +71,24 @@ def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
         
     # Calculate each y-direction flux:
     for i in range(BC_in):
-        Y1 = inlet_BC / sum(inlet_BC)
-        Y2 = SV[i*Nspecies:(i+1)*Nspecies]\
-           / sum(SV[i*Nspecies:(i+1)*Nspecies])
+        
+        D1 = sum(inlet_BC)
+        D2 = sum(SV[i*Nspecies:(i+1)*Nspecies])
+        
+        Y1 = inlet_BC / D1
+        Y2 = SV[i*Nspecies:(i+1)*Nspecies] / D2
         
         # Terms for diffusive flux:
-        gas.TDY = Temp, sum(np.mean([Y1,Y2],axis=0)), np.mean([Y1,Y2],axis=0)
+        gas.TDY = Temp, np.mean([D1,D2]), np.mean([Y1,Y2],axis=0)
         D_AB = gas.mix_diff_coeffs_mass
         mu = gas.viscosity
         Delta_Y = Y2 - Y1
         
         # Terms for convective flux:
         rho_k = np.mean([inlet_BC,SV[i*Nspecies:(i+1)*Nspecies]],axis=0)
-        gas.TDY = Temp, sum(Y1), Y1
+        gas.TDY = Temp, D1, Y1
         P1 = gas.P
-        gas.TDY = Temp, sum(Y2), Y2
+        gas.TDY = Temp, D2, Y2
         P2 = gas.P
         V_conv = -K_g*(P2 - P1)*dY_inv / mu
         
@@ -93,12 +99,15 @@ def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
         ind1 = j*Nx*Nspecies # First -> last index of cell on top
         ind2 = ind1 + Nspecies
         for i in range(Nx):
-            Y1 = SV[ind1:ind2] / sum(SV[ind1:ind2])
-            Y2 = SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies]\
-               / sum(SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies])
+            
+            D1 = sum(SV[ind1:ind2])
+            D2 = sum(SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies])
+            
+            Y1 = SV[ind1:ind2] / D1
+            Y2 = SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies] / D2 
             
             # Terms for diffusive flux:
-            gas.TDY = Temp, sum(np.mean([Y1,Y2],axis=0)), np.mean([Y1,Y2],axis=0)
+            gas.TDY = Temp, np.mean([D1,D2]), np.mean([Y1,Y2],axis=0)
             D_AB = gas.mix_diff_coeffs_mass
             mu = gas.viscosity
             Delta_Y = Y2 - Y1
@@ -106,9 +115,9 @@ def Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p):
             # Terms for convective flux:
             rho_k = np.mean([SV[ind1:ind2],
                              SV[ind1+Nx*Nspecies:ind2+Nx*Nspecies]],axis=0)
-            gas.TDY = Temp, sum(Y1), Y1
+            gas.TDY = Temp, D1, Y1
             P1 = gas.P
-            gas.TDY = Temp, sum(Y2), Y2
+            gas.TDY = Temp, D2, Y2
             P2 = gas.P
             V_conv = -K_g*(P2 - P1)*dY_inv / mu
             
