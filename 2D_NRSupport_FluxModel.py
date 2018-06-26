@@ -21,28 +21,33 @@ Author:
 
 """ Load any needed modeules """
 "-----------------------------------------------------------------------------"
+import os
 import numpy as np
-from scipy.integrate import solve_ivp
 import cantera as ct
+from shutil import copy2
 import matplotlib.pyplot as plt
+from scipy.integrate import solve_ivp
 
 """ Set up inputs and givens """
 "-----------------------------------------------------------------------------"
+# Folder name for saving outputs (solution, gas_file, script, plot, animation):
+folder_name = 'L=2_spc=6_gls=1'
+
 # Geometry and physical constants:
 L_pore = 2.0      # Diameter of pore in microns (or side length of square pore)
 spacing = 6.0     # Horizontal spacing (center to center) of pores in microns
 t_glass = 3.0     # Thickness of spin on glass layer in microns
 Temp = 25.0       # Constant gas temperature [C]
 Press = 101325.0  # Initial gas pressure [Pa]
-phi_g = 0.5       # Porosity of glass layer
-t_sim = 120.0      # Simulation time [s]
+phi_g = 0.1       # Porosity of glass layer
+t_sim = 120.0     # Simulation time [s]
 d_p = 1.5e-6      # Mean particle diameter [m]
 
 # Boundary conditions:
 # Species in Simple Air: [O2', 'N2', 'AR']
 # Constant concentrations of air will be supplied from ambient at inlet
 # Constant flux of each species O2 will be calculated based on current
-i_curr = 0.00001    # Current density at bottom boundary [A/cm^2]  
+i_curr = 0.1    # Current density at bottom boundary [A/cm^2]  
 
 # Tolerance conditions for solver (better convergence, more computation time):
 rtol = 1e-3        # Relative tolerance for IVP solver (default=1e-3)
@@ -52,7 +57,7 @@ atol = 1e-6        # Absolute tolerance for IVP solver (default=1e-6)
 Diff_Mod = 2      # Diffusion model: 1 - Fick's, 2 - Dusty Gas
 Geom = 2          # Lattice type: 1 - Square, 2 - Hexagonal
 ODE_method = 1    # System stiff: 1 - BDF, 2 - RK45, 3 - LSODA (for Stiff)
-movie = 0         # Save movie of transient solution: 0 - Off, 1 - On
+movie = 1         # Save movie of transient solution: 0 - Off, 1 - On
 
 # Discretization for 2D mesh:
 Nx = 10
@@ -66,12 +71,23 @@ gas_file = 'simple_air.cti'
 # Species in Simple Air: ['O2', 'N2', 'AR']
 plt_species = 'O2'
 
-# File name for movie (must be .html):
-movie_file_name = '10x10 Ficks.html'
-
 """ Pre-process variables/expressions """
 "-----------------------------------------------------------------------------"
-tau_g = phi_g**(-0.5)   # Tortuosity calculation via Bruggeman correlation
+# Create folder for any files/outputs to be saved:
+if os.path.exists(folder_name):
+    print('Error: this folder_name already exists. Files will be overwritten.')
+    input('Press "Enter" to continue and overwrite or "ctrl+c" to cancel.')
+else:
+    os.makedirs(folder_name)
+
+# Save the current script and cti file into new folder:
+cwd = os.getcwd()
+gas_path = ct.__path__[0]
+copy2(os.path.basename(__file__), folder_name)
+copy2(gas_path + '/data/' + gas_file, folder_name)
+
+# Tortuosity calculation via Bruggeman correlation:
+tau_g = phi_g**(-0.5)   
 
 # Call cantera for gas-phase:
 if Diff_Mod == 1:
@@ -90,7 +106,7 @@ Nspecies = gas.n_species
 SV_0 = np.zeros(Nx*Ny*Nspecies)
 
 # Given constants:
-F = 96485333           # Faraday Constant [s-A/kmol]
+F = ct.faraday         # Faraday Constant [s-A/kmol]
 R = ct.gas_constant    # Universal gas constant [J/kmol-K]
 
 Temp = Temp + 273.15    # convert temperature from [C] -> [K]
@@ -150,18 +166,7 @@ def dSVdt_func(t,SV):
     dSVdt = np.zeros(Nx*Ny*Nspecies)
     Fluxes_X, Fluxes_Y = Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p)
     Fluxes_Y[Ny*Nx*Nspecies:] = J_BC # Constant flux out BC
-    
-    # Debugging information to ensure correct fluxes:
-#    print(np.reshape(Fluxes_X[iO2::Nspecies],(Ny,Nx+1)))
-#    print(np.reshape(Fluxes_Y[iO2::Nspecies],(Ny+1,Nx)))
-#    print(np.reshape(SV[iO2::Nspecies],(Ny,Nx)))
-#    print(np.reshape(SV[1::Nspecies],(Ny,Nx)))
-#    print(np.reshape(SV[2::Nspecies],(Ny,Nx)))
-#    print(np.reshape(SV[iO2::Nspecies],(Ny,Nx))
-#          + np.reshape(SV[1::Nspecies],(Ny,Nx))
-#          + np.reshape(SV[2::Nspecies],(Ny,Nx)))
-#    input('Press Enter to continue')
-               
+                   
     # Initialize the fluxes into the first row (y-direction):
     Flux_Y_in = Fluxes_Y[0:Nx*Nspecies]
             
@@ -194,43 +199,80 @@ plt_species_ind = gas.species_index(plt_species) # Extract index for plot
 SV = sol.y.T
 sol_t = sol.t
 SV_plt = np.reshape(SV[-1,plt_species_ind::Nspecies], (Ny,Nx))
+    
+# Move into new folder to save all outputs:
+os.chdir(folder_name)
+
+# Save solution as matrix:
+# First column gives time steps returned by IVP_solver. Each row is the entire
+# domain solution for each of the species in the gas_file. The solution vector
+# matrix is stored starting from the top left corner of the domain and moving
+# across each row to the right before moving the the next row and starting 
+# again at the left-most cell.
+SV_save = np.concatenate((np.array([sol_t]).T, SV), axis=1)
+np.savetxt('solution.csv', SV_save, delimiter=',')
 
 # Create 2D pixel plot:
-plt.imshow(SV_plt,extent=[0,1e6*(rad+max_space),t_glass,0])
-plt.title('%s Density [kg/m^3 gas]' %plt_species)
-plt.xlabel('Horizontal distance, x [micron]')
-plt.ylabel('Glass thickness, y [micron]')
-plt.colorbar()
-plt.show()
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+fig = plt.figure(1)
+ax = fig.add_subplot(111)
+
+div = make_axes_locatable(ax)
+cax = div.append_axes('right', '5%', '5%')
+
+ax.set_xlabel(r'Horizontal distance, x [$\mu$m]')
+ax.set_ylabel(r'Glass thickness, y [$\mu$m]')
+ax.set_title('Time: ' + str(sol_t[-1]) + ' s')
+cf = ax.imshow(SV_plt,extent=[0,1e6*(rad+max_space),t_glass,0])
+
+ticks = np.linspace(np.min(SV_plt),np.max(SV_plt),5)
+cbar = fig.colorbar(cf, cax=cax, ticks=ticks, format='%.7f')
+cbar.set_label(r'%s Density [kg/m$^3$]' %plt_species)
+
+# Based on aspect ratio, add white space padding to avoid save cutoffs:
+# Increasing wht_space allows more padding to be added around the figure or
+# animation before it is saved so that the labels/values are not cutoff.
+if 1e-6*t_glass / (rad+max_space) < 1/2:
+    wht_space = 1
+
+# Save the 2D pixel contour of the last time step:
+fig.tight_layout(pad=wht_space)
+plt.savefig('2D_pixel_tf.png')
 
 # Create movie of entire transient solution over specified time interval:
 if movie == 1:
     from matplotlib.animation import FuncAnimation
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-    fig = plt.figure()
+    
+    fig = plt.figure(2)
     ax = fig.add_subplot(111)
     
     div = make_axes_locatable(ax)
     cax = div.append_axes('right', '5%', '5%')
     
-    SV_cb = SV[:,plt_species_ind::Nspecies]
-    
-    ax.set_xlabel('Horizontal distance, x [micron]')
-    ax.set_ylabel('Glass thickness, y [micron]')
+    ax.set_xlabel(r'Horizontal distance, x [$\mu$m]')
+    ax.set_ylabel(r'Glass thickness, y [$\mu$m]')
     
     def animate(i):
         ax.collections = []
         SV_plt = np.reshape(SV[i,plt_species_ind::Nspecies],(Ny,Nx))
         cf = ax.imshow(SV_plt,extent=[0,1e6*(rad+max_space),t_glass,0])
-
+   
         cax.cla()
-        fig.colorbar(cf, cax=cax)
-        ax.set_title('Time (s): ' + str(round(sol_t[i])))
+        ticks = np.linspace(np.min(SV_plt), np.max(SV_plt),5)
+        cbar = fig.colorbar(cf, cax=cax, ticks=ticks, format='%.7f')
+        cbar.set_label(r'%s Density [kg/m$^3$]' %plt_species)
+        ax.set_title('Time: ' + str(round(sol_t[i])) + ' s')
         
-    anim = FuncAnimation(fig, animate, interval=10, frames=len(sol_t)-1)
+        fig.tight_layout(pad=wht_space)
+        
+    anim = FuncAnimation(fig, animate, interval=10, frames=len(sol_t))
     
-    anim.save(movie_file_name)
+    anim.save('animation.html')
+    
+# Move back to original cwd after files are saved:
+os.chdir(cwd)
+
 
 
 
@@ -251,7 +293,7 @@ if movie == 1:
 
 """ Comments and future steps """
 "-----------------------------------------------------------------------------"
-# Determine appropriate discretization in time and space and apply for a time
+# Determine appropriate discretization in x-y space and apply for a time
 # that allows for a steady-state solution to be reached.
 
 # Exercise model for different geometries. 
