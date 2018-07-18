@@ -27,7 +27,7 @@ The pores are filled with air, and O2 is drawn out through the
 bottom boundary with a uniform and invariant flux that is 
 calculated according to a user-input current density.  The conversion
 assumes that a PEMFC fuel cell cathode exists at the bottom boundary,
-and the flux is equal to that neeed to support the equivalent oxygen
+and the flux is equal to that neeeded to support the equivalent oxygen
 reduction reaction rate (written here as a global reaction):
 
      O2 + 4 H(+) + 4 e(-) <--> 2 H2O
@@ -45,7 +45,7 @@ I.e., the lateral boundaries are symmetry planes and therefore have
 zero-flux boundary conditions.
 
 ## Simulation methods
-The model uses a finite-folume approach, and models the diffusion of 
+The model uses a finite-volume approach, and models the diffusion of 
 the O2 transiently, simulating out to a long enough time to reach 
 steady state. At steady state, the maximum variation of the O2 
 concentration at the sample (bottom) interface is calculated, in 
@@ -58,7 +58,24 @@ layer and the boundary conditions:
 * Pressure in axial pores.
 * Width of axial pores in Si and distance between axial pores.
 * Thickness of porous diffusion layer.
-* Diffusion layer porosity and tortuosity
+* Diffusion layer porosity.
 * Avg. pore radius within porous diffusion layer.
 * Avg. particle size in porous diffusion layer.
 * Current density at PEMFC boundary.
+* Simulation time for transient process.
+* Absolute and relative tolerances for solver.
+* Discretization in the horizontal (x) and vertical (y) directions.
+* cti file containing species that will be tracked.
+* Name of species for which the plot/animation will be produced.
+
+## Additional Options/Switches
+The user can also control different diffusive models, geometries, 
+and solver methods by changing certain switch options:
+* Diffusion model options: 1 - Advection-diffusion model, 2 - Dusty gas model
+* Pore geometry options: 1 - Si pores arranged in squares, 2 - hexagonal arrangement
+* Solver method options: 1 - Backward differencing, 2 - RK45, 3 - LSODA
+* Animation options: 0 - does not produce/save animation, 1 - saves solution animation
+     ** The animation can further be controlled with the 'frames' option. If the user
+     chooses frames = 0 then a frame is created for each time step. This can end up 
+     taking a long time for solution with a large number of time steps. To save time
+     in generating this animation, the user can specify a number of frames to be saved.
