@@ -75,7 +75,7 @@ and solver methods by changing certain switch options:
 * Pore geometry options: 1 - Si pores arranged in squares, 2 - hexagonal arrangement
 * Solver method options: 1 - Backward differencing, 2 - RK45, 3 - LSODA
 * Animation options: 0 - does not produce/save animation, 1 - saves solution animation
-     ** The animation can further be controlled with the 'frames' option. If the user
-     chooses frames = 0 then a frame is created for each time step. This can end up 
-     taking a long time for solution with a large number of time steps. To save time
-     in generating this animation, the user can specify a number of frames to be saved.
+* The animation can further be controlled with the 'frames' option. If the user
+chooses frames = 0 then a frame is created for each time step. This can end up 
+taking a long time for solution with a large number of time steps. To save time
+in generating this animation, the user can specify a number of frames to be saved.
