@@ -19,7 +19,11 @@ layer (Si wafer with axial pores [i.e. 'pinholes'] etched through
 it), and a porous diffusion layer.  The structural layer gives
 mechanical strength and a flat surface, while the porous diffusion
 layer allows species to diffuse laterally so that the species 
-concentrations are uniform by the time they reach the sample.
+concentrations are uniform by the time they reach the sample. An example
+of this stucture can be seen in Figure 1.
+
+![github image](https://user-images.githubusercontent.com/39809042/42965564-a609f95c-8b57-11e8-8642-38bd77588ee3.PNG)
+<p align="center"> Figure 1: Visualization of discretization for support structure including top and side views
 
 ## Simulation Domain
 The simulation is of the porous diffusion layer.
