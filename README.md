@@ -115,4 +115,10 @@ In both cases, please update the entry with the version used. The DOI for the la
 given in the badge at the top, or alternately <https://doi.org/10.5281/zenodo.1317600> will
 take you to the latest version (and generally represents all versions).
 
+## Extending the model
+WHile the model was written for a rather specific purpose, it can be easily extended for other 2D porous flux simulations.  If you think it may be useful for your work, please download and edit as you see fit.  If you make a modification that you think others might also find useful, please consider submitting a pull request, and we are happy to incporate the changes (you are on GitHub, so chances are you already understand all this, but just in case...)
+
+Perhaps the most obvious extension of this tool would be to look at 2D diffusion through the porous Gas Diffusion Layer (GDL) in a polymer electrolyte membrane fuel cell (PEMFC).  The PEMFC GDL has a similar domain, with metallic flow channels/current collectors at the top of the domain, and an (ideally) constant flux of O2 into the catalyst layer at the bottom boundary.  Keeping these current assumptions to model the GDL flow field would simply require changing some of the inputs to reflect the flow-field geometry.  
+
+Relaxing the current assumptions, particularly to incorporate a non-uniform flux at the bottom boudnary should also be relatively straightforward.  The current density at a given node could be written as a function of the local gas concentration, or if one is feeling ambitious, an additional catalyst layer domain could be added.
 
