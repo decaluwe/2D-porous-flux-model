@@ -72,7 +72,7 @@ layer and the boundary conditions:
 * cti file containing species that will be tracked
 * Name of species for which the plot/animation will be produced
 * Reactive species name (i.e. the species that has a constant flux at the outlet)
-* The ratio of electrons per 1 mol of the reactive species from the redox reaction
+* The ratio of moles of electrons per 1 mol of the reactive species from the redox reaction
 
 ## Additional Options/Switches
 The user can also control different diffusive models, geometries, 
