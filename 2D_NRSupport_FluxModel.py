@@ -17,6 +17,11 @@ Author:
     |__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|
     |__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__| #constant flux bot
         
+    This model has also been expanded to track the diffusion of species in fuel
+    cells. The user is able to define the reactive species at the constant flux
+    outlet boundary condition so they are not limited to choosing fluids with 
+    O2 as a species.
+    
 """
 
 """ Load any needed modeules """
@@ -24,14 +29,19 @@ Author:
 import os, time
 import numpy as np
 import cantera as ct
-from shutil import copy2, rmtree
 import matplotlib.pyplot as plt
+from shutil import copy2, rmtree
 from scipy.integrate import solve_ivp
 
 """ Set up inputs and givens """
 "-----------------------------------------------------------------------------"
 # Folder name for saving outputs (solution, gas_file, script, plot, animation):
 folder_name = 'folder_name'
+
+# Select gas file from Cantera or user-made cti files:
+gas_file = 'simple_air.cti'
+# 'simple_air.cti' was created from 'air.cti' by removing reactions and all 
+# species except O2, N2, and Ar.
 
 # Geometry and physical constants:
 L_pore = 2.0      # Diameter of Si wafer pores [microns]
@@ -45,14 +55,13 @@ phi_g = 0.5       # Porosity of glass layer
 t_sim = 120.0     # Simulation time [s]
 
 # Boundary conditions:
-# Species in Simple Air: [O2', 'N2', 'AR']
-# Constant concentrations of air will be supplied from ambient at inlet
-# Constant flux of each species O2 will be calculated based on current
-i_curr = 0.1    # Current density at bottom boundary [A/cm^2]  
+# Constant concentrations of gas will be supplied from inlet user Temp, Press.
+# Constant flux of specified species will be caluculated from current below.
+i_curr = 0.1     # Current density at bottom boundary [A/cm^2]  
 
 # Tolerance conditions for solver (better convergence, more computation time):
-rtol = 1e-9         # Relative tolerance for IVP solver (default=1e-3)
-atol = 1e-12        # Absolute tolerance for IVP solver (default=1e-6)
+rtol = 1e-9       # Relative tolerance for IVP solver (default=1e-3)
+atol = 1e-12      # Absolute tolerance for IVP solver (default=1e-6)
 
 # Switch inputs:
 Diff_Mod = 1      # Diffusion model: 1 - Fick's, 2 - Dusty Gas
@@ -63,17 +72,18 @@ frames = 50       # For movie: 0 - frame at each time step,
                   #     other - approximate # of frames to save generation time
 
 # Discretization for 2D mesh:
-Nx = 3
-Ny = 3
+Nx = 3      # Integer number of evenly-spaced discretizations in x-direction 
+Ny = 3      # Integer number of evenly-spaced discretizations in y-direction 
 
-# Select gas file from available cti files:
-# Make sure that O2 is one of species since bottom flux reaction requires O2.
-gas_file = 'simple_air.cti'
-# 'simple_air.cti' was created from 'air.cti' by removing reactions and all 
-# species except O2, N2, and Ar.
+# Reactive species at bottom boundary (i.e. species with constant flux out):
+rxn_species = 'O2'
+e_ratio = 4
+# The e_ratio is used to calculate the constant flux boundary condition. It is 
+# defined as the ratio of electrons to 1 mol of rxn_species from the redox 
+# reaction. For example... in O2 + 4H(+) + 4e(-) <--> 2H2O, the e_ratio would 
+# be 4 with O2 as the rxn_species since there are 4 mol e(-) to 1 mol O2.
     
-# Species name for contour plots:
-# Species in Simple Air: ['O2', 'N2', 'AR']
+# Species name for contour plot/animation:
 plt_species = 'O2'
 
 """ Pre-process variables/expressions """
@@ -151,12 +161,12 @@ dY = 1e-6*t_glass / Ny
 SV_0 = np.tile(gas.Y*gas.density_mass,Nx*Ny)
 inlet_BC = gas.Y*gas.density_mass
 
-# Solve for O2 flux at outlet BC based on i_curr and Faraday:
-iO2 = gas.species_index('O2')
-MW_O2 = gas.molecular_weights[iO2]
-J_O2_out = MW_O2 *i_curr *100**2 /F /4
+# Solve for flux at outlet BC based on i_curr, Faraday, and e_ratio:
+i_rxnsp = gas.species_index(rxn_species)
+MW_rxnsp = gas.molecular_weights[i_rxnsp]
+J_rxnsp_out = MW_rxnsp *i_curr *100**2 /F /e_ratio
 J_BC = np.zeros(Nx*Nspecies)
-J_BC[iO2::Nspecies] = J_O2_out
+J_BC[i_rxnsp::Nspecies] = J_rxnsp_out
 
 # Set up new constants to reduce use of division:
 phi_inv = 1/phi_g
