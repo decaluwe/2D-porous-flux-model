@@ -65,30 +65,20 @@ layer and the boundary conditions:
 * Simulation time for transient process
 * Absolute and relative tolerances for solver
 * Discretization in the horizontal (x) and vertical (y) directions
-
 * cti file containing species that will be tracked
-
 * Name of species for which the plot/animation will be produced
 * Reactive species name (i.e. the species that has a constant flux at the outlet)
 * The ratio of electrons per 1 mol of the reactive species from the redox reaction
 
 ## Additional Options/Switches
-The user can also control different diffusive 
-models, geometries, 
+The user can also control different diffusive models, geometries, 
 and solver methods by changing certain switch options:
 
 * Diffusion model options: 1 - Advection-diffusion model, 2 - Dusty gas model
-
 * Pore geometry options: 1 - Si pores arranged in squares, 2 - hexagonal arrangement
-
 * Solver method options: 1 - Backward differencing, 2 - RK45, 3 - LSODA
-
 * Animation options: 0 - does not produce/save animation, 1 - saves solution animation
-
 * The animation can further be controlled with the 'frames' option. If the user 
-
 chooses frames = 0 then a frame is created for each time step. This can end up 
-taking 
-a long time for solutions with a large number of time steps. To save time
- in generating 
-this animation, the user can specify a number of frames to be saved.
+taking a long time for solutions with a large number of time steps. To save time
+ in generating this animation, the user can specify a number of frames to be saved.
