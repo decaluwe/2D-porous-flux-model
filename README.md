@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/135629486.svg)](https://zenodo.org/badge/latestdoi/135629486)
+
 # 2D-porous-flux-model
 Modling 2D porous flux for NR flow through support
 
