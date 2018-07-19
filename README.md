@@ -57,6 +57,19 @@ steady state. At steady state, the maximum variation of the O2
 concentration at the sample (bottom) interface is calculated, in 
 order to assess the suitability of the proposed structures.
 
+## Running the Model
+To run the model, after downloading or cloning this repository, one
+executes the Python file `2D_FluxModel.py`.
+
+Open and edit the file first, to adjust the user inputs for your own
+particular application (all inputs are at the top of the file, and
+are described in the section below).  Then save, close, and run the 
+file using your preferred method for running Python files.
+
+While the model calls either of the files Ficks_func.py or DGM_func.py
+in order to evaluation mass flux rates, there should be no need for you
+to ever interact directly with either of these two files.
+
 ## User inputs
 The user inputs the geometry/microstructure for the porous diffusion 
 layer and the boundary conditions:
