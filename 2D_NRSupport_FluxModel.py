@@ -17,61 +17,99 @@ Author:
     |__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|
     |__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__|__| #constant flux bot
         
+    This model has also been expanded to track the diffusion of species in fuel
+    cells. The user is able to define the reactive species at the constant flux
+    outlet boundary condition so they are not limited to choosing fluids with 
+    O2 as a species.
+    
 """
 
 """ Load any needed modeules """
 "-----------------------------------------------------------------------------"
+import os, time
 import numpy as np
-from scipy.integrate import solve_ivp
 import cantera as ct
 import matplotlib.pyplot as plt
+from shutil import copy2, rmtree
+from scipy.integrate import solve_ivp
 
 """ Set up inputs and givens """
 "-----------------------------------------------------------------------------"
+# Folder name for saving outputs (solution, gas_file, script, plot, animation):
+folder_name = 'folder_name'
+
+# Select gas file from Cantera or user-made cti files:
+gas_file = 'simple_air.cti'
+# 'simple_air.cti' was created from 'air.cti' by removing reactions and all 
+# species except O2, N2, and Ar.
+
 # Geometry and physical constants:
-L_pore = 2.0      # Diameter of pore in microns (or side length of square pore)
-spacing = 6.0     # Horizontal spacing (center to center) of pores in microns
-t_glass = 3.0     # Thickness of spin on glass layer in microns
+L_pore = 2.0      # Diameter of Si wafer pores [microns]
+spacing = 6.0     # Horizontal spacing (center to center) of Si pores [microns]
+d_p = 1.5e-6      # Mean particle diameter of glass porous medium [m]
+r_p = 1.5e-7      # Mean pore radius of glass porous medium [m]
+t_glass = 3.0     # Thickness of  glass layer [microns]
 Temp = 25.0       # Constant gas temperature [C]
 Press = 101325.0  # Initial gas pressure [Pa]
 phi_g = 0.5       # Porosity of glass layer
-t_sim = 120.0      # Simulation time [s]
-d_p = 1.5e-6      # Mean particle diameter [m]
+t_sim = 120.0     # Simulation time [s]
 
 # Boundary conditions:
-# Species in Simple Air: [O2', 'N2', 'AR']
-# Constant concentrations of air will be supplied from ambient at inlet
-# Constant flux of each species O2 will be calculated based on current
-i_curr = 0.00001    # Current density at bottom boundary [A/cm^2]  
+# Constant concentrations of gas will be supplied from inlet user Temp, Press.
+# Constant flux of specified species will be caluculated from current below.
+i_curr = 0.1     # Current density at bottom boundary [A/cm^2]  
 
 # Tolerance conditions for solver (better convergence, more computation time):
-rtol = 1e-3        # Relative tolerance for IVP solver (default=1e-3)
-atol = 1e-6        # Absolute tolerance for IVP solver (default=1e-6)
+rtol = 1e-9       # Relative tolerance for IVP solver (default=1e-3)
+atol = 1e-12      # Absolute tolerance for IVP solver (default=1e-6)
 
 # Switch inputs:
-Diff_Mod = 2      # Diffusion model: 1 - Fick's, 2 - Dusty Gas
+Diff_Mod = 1      # Diffusion model: 1 - Fick's, 2 - Dusty Gas
 Geom = 2          # Lattice type: 1 - Square, 2 - Hexagonal
-ODE_method = 1    # System stiff: 1 - BDF, 2 - RK45, 3 - LSODA (for Stiff)
-movie = 0         # Save movie of transient solution: 0 - Off, 1 - On
+ODE_method = 1    # Solver method: 1 - BDF, 2 - RK45, 3 - LSODA (for Stiff)
+movie = 1         # Save movie of transient solution: 0 - Off, 1 - On
+frames = 50       # For movie: 0 - frame at each time step, 
+                  #     other - approximate # of frames to save generation time
 
 # Discretization for 2D mesh:
-Nx = 10
-Ny = 10
+Nx = 3      # Integer number of evenly-spaced discretizations in x-direction 
+Ny = 3      # Integer number of evenly-spaced discretizations in y-direction 
 
-# Select gas file from available cti files:
-# Make sure that O2 is one of species since bottom flux reaction requires O2.
-gas_file = 'simple_air.cti'
+# Reactive species at bottom boundary (i.e. species with constant flux out):
+rxn_species = 'O2'
+e_ratio = 4
+# The e_ratio is used to calculate the constant flux boundary condition. It is 
+# defined as the ratio of electrons to 1 mol of rxn_species from the redox 
+# reaction. For example... in O2 + 4H(+) + 4e(-) <--> 2H2O, the e_ratio would 
+# be 4 with O2 as the rxn_species since there are 4 mol e(-) to 1 mol O2.
     
-# Species name for contour plots:
-# Species in Simple Air: ['O2', 'N2', 'AR']
+# Species name for contour plot/animation:
 plt_species = 'O2'
-
-# File name for movie (must be .html):
-movie_file_name = '10x10 Ficks.html'
 
 """ Pre-process variables/expressions """
 "-----------------------------------------------------------------------------"
-tau_g = phi_g**(-0.5)   # Tortuosity calculation via Bruggeman correlation
+# Create folder for any files/outputs to be saved:
+if os.path.exists(folder_name):
+    print('WARNING: folder_name already exists. Files will be overwritten.')
+    input('Press "Enter" to continue and overwrite or "ctrl+c" to cancel.')
+    if os.path.exists(folder_name + '/animation_frames'):
+        rmtree(folder_name + '/animation_frames')
+    if os.path.exists(folder_name + 'animation.html'):
+        os.remove(folder_name + '/animation.html')     
+else:
+    os.makedirs(folder_name)
+
+# Save the current script and cti file into new folder:
+cwd = os.getcwd()
+gas_path = ct.__path__[0]
+copy2(os.path.basename(__file__), folder_name)
+if os.path.exists(gas_file):
+    copy2(gas_file, folder_name)
+else:
+    copy2(gas_path + '/data/' + gas_file, folder_name)
+
+# Tortuosity calculation via Bruggeman correlation:
+tau_g = phi_g**(-0.5)   
 
 # Call cantera for gas-phase:
 if Diff_Mod == 1:
@@ -80,18 +118,16 @@ elif Diff_Mod == 2:
     gas = ct.DustyGas(gas_file)
     gas.porosity = phi_g
     gas.tortuosity = tau_g
-    gas.mean_pore_radius = L_pore/2 *1e-6
+    gas.mean_pore_radius = r_p
     gas.mean_particle_diameter = d_p
-# 'simple_air.cti' was created from 'air.cti' by removing reactions and all 
-# species except O2, N2, and Ar.
     
 # Initialize solution vector:
 Nspecies = gas.n_species
 SV_0 = np.zeros(Nx*Ny*Nspecies)
 
 # Given constants:
-F = 96485333           # Faraday Constant [s-A/kmol]
-R = ct.gas_constant    # Universal gas constant [J/kmol-K]
+F = ct.faraday          # Faraday Constant [s-A/kmol]
+R = ct.gas_constant     # Universal gas constant [J/kmol-K]
 
 Temp = Temp + 273.15    # convert temperature from [C] -> [K]
 gas.TP = Temp, Press    # set gas state via temperature and pressure
@@ -100,7 +136,7 @@ rad = 1e-6*L_pore/2.0   # length of top inlet [m]
 
 # Determine half of max solid distance between pores for domain [m]
 if Geom == 1: # square lattice
-    max_space = 1e-6*np.sqrt(2)*(spacing - L_pore) / 2.0
+    max_space = 1e-6*(np.sqrt(2)*spacing - L_pore) / 2.0
 elif Geom == 2: # hexagonal lattice
     max_space = 1e-6*(spacing - L_pore) / 2.0
 
@@ -125,12 +161,12 @@ dY = 1e-6*t_glass / Ny
 SV_0 = np.tile(gas.Y*gas.density_mass,Nx*Ny)
 inlet_BC = gas.Y*gas.density_mass
 
-# Solve for O2 flux at outlet BC based on i_curr and Faraday:
-iO2 = gas.species_index('O2')
-MW_O2 = gas.molecular_weights[iO2]
-J_O2_out = MW_O2 *i_curr *100**2 /F /4
+# Solve for flux at outlet BC based on i_curr, Faraday, and e_ratio:
+i_rxnsp = gas.species_index(rxn_species)
+MW_rxnsp = gas.molecular_weights[i_rxnsp]
+J_rxnsp_out = MW_rxnsp *i_curr *100**2 /F /e_ratio
 J_BC = np.zeros(Nx*Nspecies)
-J_BC[iO2::Nspecies] = J_O2_out
+J_BC[i_rxnsp::Nspecies] = J_rxnsp_out
 
 # Set up new constants to reduce use of division:
 phi_inv = 1/phi_g
@@ -148,20 +184,12 @@ elif Diff_Mod == 2:
 # Function for system of ODEs to solve:
 def dSVdt_func(t,SV): 
     dSVdt = np.zeros(Nx*Ny*Nspecies)
-    Fluxes_X, Fluxes_Y = Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,phi_g,tau_g,d_p)
-    Fluxes_Y[Ny*Nx*Nspecies:] = J_BC # Constant flux out BC
+    Fluxes_X, Fluxes_Y = Flux_Calc(SV,Nx,dX,Ny,dY,Nspecies,BC_in,inlet_BC,gas,
+                                   phi_g,tau_g,d_p)
     
-    # Debugging information to ensure correct fluxes:
-#    print(np.reshape(Fluxes_X[iO2::Nspecies],(Ny,Nx+1)))
-#    print(np.reshape(Fluxes_Y[iO2::Nspecies],(Ny+1,Nx)))
-#    print(np.reshape(SV[iO2::Nspecies],(Ny,Nx)))
-#    print(np.reshape(SV[1::Nspecies],(Ny,Nx)))
-#    print(np.reshape(SV[2::Nspecies],(Ny,Nx)))
-#    print(np.reshape(SV[iO2::Nspecies],(Ny,Nx))
-#          + np.reshape(SV[1::Nspecies],(Ny,Nx))
-#          + np.reshape(SV[2::Nspecies],(Ny,Nx)))
-#    input('Press Enter to continue')
-               
+    # Set constant flux out BC:
+    Fluxes_Y[Ny*Nx*Nspecies:] = J_BC 
+                   
     # Initialize the fluxes into the first row (y-direction):
     Flux_Y_in = Fluxes_Y[0:Nx*Nspecies]
             
@@ -185,8 +213,13 @@ def dSVdt_func(t,SV):
 
 """ Call ODE integrator and process results """
 "-----------------------------------------------------------------------------"
+print('\nBegin solving transient process.')
+t1 = time.time()
 sol = solve_ivp(dSVdt_func, [0, t_sim], SV_0, method=method,
                 atol=atol, rtol=rtol) # Use ODE solver for IVP
+t2 = time.time()
+print('Solved', len(sol.t),'steps in', round(t2 - t1,2), 's.',
+      'Wait while outputs are generated/saved.')
 
 plt_species_ind = gas.species_index(plt_species) # Extract index for plot
 
@@ -194,64 +227,104 @@ plt_species_ind = gas.species_index(plt_species) # Extract index for plot
 SV = sol.y.T
 sol_t = sol.t
 SV_plt = np.reshape(SV[-1,plt_species_ind::Nspecies], (Ny,Nx))
+    
+# Move into new folder to save all outputs:
+os.chdir(folder_name)
+
+# Save solution as matrix:
+# First column gives time steps returned by IVP_solver. Each row is the entire
+# domain solution for each of the species in the gas_file. The solution vector
+# matrix is stored starting from the top left corner of the domain and moving
+# across each row to the right before moving the the next row and starting 
+# again at the left-most cell.
+SV_save = np.concatenate((np.array([sol_t]).T, SV), axis=1)
+np.savetxt('solution.csv', SV_save, delimiter=',')
 
 # Create 2D pixel plot:
-plt.imshow(SV_plt,extent=[0,1e6*(rad+max_space),t_glass,0])
-plt.title('%s Density [kg/m^3 gas]' %plt_species)
-plt.xlabel('Horizontal distance, x [micron]')
-plt.ylabel('Glass thickness, y [micron]')
-plt.colorbar()
-plt.show()
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+delta_c = '{:.2e}'.format(np.max(SV_plt[-1,:]) - np.min(SV_plt[-1,:]))
+
+fig = plt.figure(1)
+ax = fig.add_subplot(111)
+
+div = make_axes_locatable(ax)
+cax = div.append_axes('right', '5%', '5%')
+
+ax.set_xlabel(r'Horizontal distance, x [$\mu$m]')
+ax.set_ylabel(r'Glass thickness, y [$\mu$m]')
+ax.set_title('Time: ' + str(sol_t[-1]) + ' s\n' r'$\Delta\rho_{max}$ outlet: ' 
+             + delta_c + r' kg/m$^3$')
+cf = ax.imshow(SV_plt,extent=[0,1e6*(rad+max_space),t_glass,0])
+
+ticks = np.linspace(np.min(SV_plt),np.max(SV_plt),5)
+cbar = fig.colorbar(cf, cax=cax, ticks=ticks, format='%.7f')
+cbar.set_label(r'%s Density, $\rho$ [kg/m$^3$]' %plt_species)
+
+# Add white space padding to avoid save cutoffs:
+# Increasing wht_space allows more padding to be added around the figure or
+# animation before it is saved so that the labels/values are not cutoff.
+wht_space = 1
+
+# Save the 2D pixel contour of the last time step:
+fig.tight_layout(pad=wht_space)
+plt.savefig('2D_pixel_tf.png')
 
 # Create movie of entire transient solution over specified time interval:
 if movie == 1:
     from matplotlib.animation import FuncAnimation
-    from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-    fig = plt.figure()
+    
+    fig = plt.figure(2)
     ax = fig.add_subplot(111)
     
     div = make_axes_locatable(ax)
     cax = div.append_axes('right', '5%', '5%')
     
-    SV_cb = SV[:,plt_species_ind::Nspecies]
+    ax.set_xlabel(r'Horizontal distance, x [$\mu$m]')
+    ax.set_ylabel(r'Glass thickness, y [$\mu$m]')
     
-    ax.set_xlabel('Horizontal distance, x [micron]')
-    ax.set_ylabel('Glass thickness, y [micron]')
+    if frames == 0:
+        t_movie = sol_t
+        SV_movie = SV
+    elif len(sol_t) > frames:
+        ind_movie = round(len(sol_t) / frames)
+        if (len(sol_t)-1) % ind_movie == 0:
+            t_movie = sol_t[0::ind_movie]
+            SV_movie = SV[0::ind_movie,:]
+        else:            
+            t_movie = np.append(sol_t[0::ind_movie],sol_t[-1])
+            SV_movie = np.append(SV[0::ind_movie,:],[SV[-1,:]],axis=0)      
     
     def animate(i):
         ax.collections = []
-        SV_plt = np.reshape(SV[i,plt_species_ind::Nspecies],(Ny,Nx))
+        SV_plt = np.reshape(SV_movie[i,plt_species_ind::Nspecies],(Ny,Nx))
         cf = ax.imshow(SV_plt,extent=[0,1e6*(rad+max_space),t_glass,0])
-
+        delta_c = '{:.2e}'.format(np.max(SV_plt[-1,:]) - np.min(SV_plt[-1,:]))
+   
         cax.cla()
-        fig.colorbar(cf, cax=cax)
-        ax.set_title('Time (s): ' + str(round(sol_t[i])))
+        ticks = np.linspace(np.min(SV_plt), np.max(SV_plt),5)
+        cbar = fig.colorbar(cf, cax=cax, ticks=ticks, format='%.7f')
+        cbar.set_label(r'%s Density, $\rho$ [kg/m$^3$]' %plt_species)
         
-    anim = FuncAnimation(fig, animate, interval=10, frames=len(sol_t)-1)
+        if t_movie[i] < 1.0:
+            t_current = '{:.2e}'.format(t_movie[i])
+        else:
+            t_current = '{:.2f}'.format(t_movie[i])
+        
+        ax.set_title('Time: ' + t_current + ' s\n' 
+                     r'$\Delta\rho_{max}$ outlet: ' + delta_c + r' kg/m$^3$')
+        
+        fig.tight_layout(pad=wht_space)
+        
+    anim = FuncAnimation(fig, animate, interval=500, frames=len(t_movie))
     
-    anim.save(movie_file_name)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    anim.save('animation.html')
+    
+# Move back to original cwd after files are saved:
+os.chdir(cwd)
 
 """ Comments and future steps """
 "-----------------------------------------------------------------------------"
-# Determine appropriate discretization in time and space and apply for a time
-# that allows for a steady-state solution to be reached.
+# Add species complexity so that model can be extended to work for Fuel Cell
+# processes.
 
-# Exercise model for different geometries. 
+# Determine appropriate discretization in x-y space for grid independence.
