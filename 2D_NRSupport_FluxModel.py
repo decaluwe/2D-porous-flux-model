@@ -79,9 +79,9 @@ Ny = 3      # Integer number of evenly-spaced discretizations in y-direction
 rxn_species = 'O2'
 e_ratio = 4
 # The e_ratio is used to calculate the constant flux boundary condition. It is 
-# defined as the ratio of electrons to 1 mol of rxn_species from the redox 
-# reaction. For example... in O2 + 4H(+) + 4e(-) <--> 2H2O, the e_ratio would 
-# be 4 with O2 as the rxn_species since there are 4 mol e(-) to 1 mol O2.
+# defined as the ratio of moles of electrons to 1 mol of rxn_species from the  
+# redox reaction. For example... in O2 + 4H(+) + 4e(-) <--> 2H2O, the e_ratio  
+# would be 4 with O2 as the rxn_species since there are 4 mol e(-) to 1 mol O2.
     
 # Species name for contour plot/animation:
 plt_species = 'O2'
