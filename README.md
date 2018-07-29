@@ -117,7 +117,7 @@ If you use this tool as part of a scholarly work, please cite using:
 A BibTeX entry for LaTeX users is
 
 ```TeX
-@misc{PyKED,
+@misc{2dPorousFlux,
     author = {Corey R. Randall and Steven C DeCaluwe},
     year = 2018,
     title = {2D Porous Flux Model v1.0},
